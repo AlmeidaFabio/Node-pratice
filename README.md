@@ -206,3 +206,47 @@ export class createUsers1638226054013 implements MigrationInterface {
 ```
 
 Agora é só rodar o comando ``npm run typeorm migration:run`` e nossa tabela de usuários será criada no banco de dados.
+
+## Models/Entities
+
+Agora vamos aprender a configurar nossos models ou entities
+
+- Na pasta src crie a pasta models ou entities
+- Dentro da pasta models crie um arquivo User.ts, ou seja nosso modelo de usuário
+
+````User
+import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
+
+@Entity('users')
+export class User {
+    @PrimaryGeneratedColumn("increment")
+    id:number;
+
+    @Column()
+    name:string;
+
+    @Column()
+    lastname:string;
+
+    @Column({ unique:true })
+    email:string;
+
+    @Column({select:false})
+    password:string;
+}
+````
+
+pronto já temos nosso model configurado.
+
+## Repositórios
+
+- Dentro da pasta src crie uma pasta chamada repositories
+- Na pasta repositories crie o arquivo UsersRepository.ts
+
+````Repository
+import { EntityRepository, Repository } from "typeorm";
+import { User } from "../../models/User";
+
+@EntityRepository(User)
+export class UsersRepository extends Repository<User>{}
+````
