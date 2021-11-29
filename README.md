@@ -52,3 +52,35 @@ module.exports = {
   `` "test": "set NODE_ENV=test& jest --runInBand" ``
 
 Agora já podemos rodar nossos testes com o comando `` npm run test ``
+
+## Iniciando o app
+
+- Crie a pasta src
+- Dentro da pasta src vamos criar o arquivo app.ts
+  
+```App
+
+    import express from 'express'
+
+    const app = express()
+
+    export { app }
+
+```
+
+- Também dentro da pasta src crie o arquivo index.ts
+  
+```Index
+  import 'dotenv/config';
+  import { app } from "./app";
+
+  app.listen(process.env.PORT || 3000, () => {
+    console.log(`Server is running in ${process.env.BASE_URL}:${process.env.PORT}`)
+  })
+```
+
+***obs: lembre-se de configurar a porta e a url base nas variáveis de ambiente***
+
+Vamos ver se tudo está funcionando?
+
+``npm run dev``
