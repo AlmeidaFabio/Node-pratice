@@ -84,3 +84,125 @@ Agora já podemos rodar nossos testes com o comando `` npm run test ``
 Vamos ver se tudo está funcionando?
 
 ``npm run dev``
+
+## Conectando a um Banco de Dados
+
+Usaremos o MYSQL e o typeOrm
+
+- Instale os pacotes ``npm i mysql typeorm reflect-metadata``
+- Dentro da pasta src crie uma pasta chamada database
+- Dentro da pasta database crie um arquivo index.ts
+
+  ```connection
+  import { createConnection } from "typeorm";
+
+  createConnection()
+  ```
+
+- No .env adicione as seguinte variáveis de ambiente
+
+```variáveis
+TYPEORM_CONNECTION = mysql
+TYPEORM_HOST = localhost
+TYPEORM_USERNAME = your username
+TYPEORM_PASSWORD = your pass
+TYPEORM_DATABASE = your database name
+TYPEORM_PORT = 3306
+TYPEORM_SYNCHRONIZE = false
+TYPEORM_LOGGING = false
+TYPEORM_ENTITIES = ./src/models/**.ts
+TYPEORM_ENTITIES_DIR = ./src/models
+TYPEORM_MIGRATIONS = ./src/database/migrations/**.ts
+TYPEORM_MIGRATIONS_DIR = ./src/database/migrations
+```
+
+- no index da pasta src importe o reflect-metadata e o database
+
+```index
+import 'dotenv/config';
+import 'reflect-metadata';
+import './database';
+
+import { app } from "./app";
+
+app.listen(process.env.PORT || 633, () => {
+    console.log(`Server is running in ${process.env.BASE_URL}:${process.env.PORT}`)
+});
+```
+
+- Pronto, agora ja temos tudo configurado e já podemos nos conectar com o banco de dados
+
+### criando uma migration
+
+Com o banco de dados já criado e vázio dê o seguinte comando para criar uma migration para uma tabela de usuários por exemplo
+
+``npx typeorm migration:create -n create_users``
+
+Note que dentro da pasta database será criada a pasta migrations e dentro desta a nossa migration
+
+#### Trabalhando com migrations
+
+O nosso arquivo criado vem pré configurado no seguinte formato
+
+```migration
+import {MigrationInterface, QueryRunner} from "typeorm";
+
+export class createUsers1638226054013 implements MigrationInterface {
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+    }
+
+}
+```
+
+Abaixo um exemplo de uma migration de criação de uma tabela de usuários
+
+```users
+import {MigrationInterface, QueryRunner, Table} from "typeorm";
+
+export class createUsers1638226054013 implements MigrationInterface {
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.createTable(
+            new Table({
+                name:"users",
+                columns:[
+                    {
+                        name:"id",
+                        type:"int",
+                        isPrimary:true,
+                        isGenerated:true,
+                        generationStrategy:"increment"
+                    },
+                    {
+                        name:"name",
+                        type:"varchar(50)",
+                    },
+                    {
+                        name:"lastname",
+                        type:"varchar(50)",
+                    },
+                    {
+                        name:"email",
+                        type:"varchar(150)",
+                        isUnique:true
+                    },
+                    {
+                        name:"password",
+                        type:"varchar(200)",
+                    }
+                ]
+            })
+        )
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.dropTable("users")
+    }
+}
+```
+
+Agora é só rodar o comando ``npm run typeorm migration:run`` e nossa tabela de usuários será criada no banco de dados.
