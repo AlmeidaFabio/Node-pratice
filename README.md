@@ -287,7 +287,7 @@ export class createPosts1638229610178 implements MigrationInterface {
                     },
                     {
                         name:"text",
-                        type:"varchar"
+                        type:"text"
                     },
                     {
                         name:"created_at",
@@ -346,6 +346,9 @@ export class Post {
 
     @CreateDateColumn({ default:Date.now() })
     updated_at:Date;
+
+    @Column()
+    user_id:number;
 }
 ````
 
@@ -388,6 +391,9 @@ export class Post {
 
     @CreateDateColumn({ default:Date.now() })
     updated_at:Date;
+
+    @Column()
+    user_id:number;
 
     @ManyToOne(() => User, user => user.posts)
     user:User;
@@ -475,6 +481,7 @@ export type PostTypes = {
     text:string;
     created_at:string;
     updated_at:string;
+    user_id:number;
 }
 ````
 
@@ -603,7 +610,7 @@ app.use(router)
 export { app }
 ````
 
-- Ainda no app.ts import e use o json e o urlencoded do express, e, também, instale e use o pacote cors ``npm i cors`` ``npm i @types/cors -D``
+- Ainda no app.ts importe e use o json e o urlencoded do express, e, também, instale e use o pacote cors ``npm i cors`` ``npm i @types/cors -D``
   
 ````app
 import express, { json, urlencoded } from 'express'
@@ -638,3 +645,246 @@ export { router }
 Agora é só testar usando o Insomnia, Postman, Rest test test, entre outros meios de testar sua api.
 
 ![teste usando o insomnia](/img/test.png)
+
+Já podemos criar nosso primeiro post, mas antes disso é interessante criar um processo de autenticação e autorização em nosso projeto.
+
+Primeiramente vamos criar um simples sistema de login usando a senha e o email do usuário.
+
+## Autenticação
+
+- Vamos usar o jsonwebtoken em nosso projeto ``npm i jsonwebtoken`` ``npm i @types/jsonwebtoken -D``
+- Na pasta services crie o arquivo AuthService.ts
+- No .env crie uma variável SECRET com uma senha secreta definida por você
+- crie a função de login no AuthService
+
+````login
+import { getCustomRepository, Repository } from "typeorm";
+import { User } from "../models/User";
+import { UsersRepository } from "../repositories/UsersRepository";
+import bcrypt from 'bcrypt'
+import jwt from 'jsonwebtoken'
+
+export class AuthService {
+    private usersRepository: Repository<User>;
+
+    constructor() {
+        this.usersRepository = getCustomRepository(UsersRepository);
+    }
+
+    async login(email: string, password: string) {
+        try {
+            const user = await this.usersRepository.findOne({ email }, {
+                select:["id", "email", "password"]
+            });
+
+            if(!user) {
+                return {error: 'User does not exists!'};
+            }
+
+            if(!await bcrypt.compare(password, user.password)) {
+                return {error: 'Invalid password!'};
+            }
+
+            const token = jwt.sign({ id:user.id }, process.env.SECRET, {
+                expiresIn:86400
+            });
+
+            return {id:user.id, token};
+        } catch (error) {
+            return error;
+        }
+    }
+}
+````
+
+- Na pasta controllers vamos criar nosso AuthController com nossa função de login
+
+````login
+import { Request, Response } from "express";
+import { AuthService } from "../services/AuthService";
+
+export class AuthController {
+    async login(request:Request, response:Response) {
+        const auth = new AuthService();
+
+        const { email, password } = request.body;
+
+        try {
+            const loggedUser = await auth.login(email, password.toString());
+
+            return response.status(200).json(loggedUser);
+        } catch (error) {
+            return response.status(400).json(error);
+        }
+    }
+}
+````
+
+- Em nosso arquivo de rotas vamos criar a rota de login
+
+````routes
+import { Router } from "express";
+import { AuthController } from "../controllers/AuthController";
+import { UserController } from "../controllers/UserController";
+
+const userController = new UserController();
+const authController = new AuthController();
+
+const router = Router()
+
+//Autenticação
+router.post('/login', authController.login)
+
+
+router.post('/user', userController.create)
+
+export { router }
+````
+
+- Teste pra ver se ocorreu tudo bem
+
+![login](/img/login.png)
+
+Agora que temos nosso usuário autenticado e um token vamos criar um método de autorização, pois apenas um usuário autorizado poderá criar posts em nosso sistema.
+
+## Autorização
+
+- De início crie dentro de src uma pasta chamada middlewares
+- Dentro de middlewares crie um arquivo chamado Authorize.ts
+
+````authorize
+import { NextFunction, Request, Response } from "express";
+import jwt from 'jsonwebtoken';
+
+export class Authorize {
+    async authorized(request:Request, response:Response, next:NextFunction) {
+        try {
+            if(!request.headers.authorization) {
+                response.json({ notallowed:true })
+                return;
+            }
+    
+            let token = '';
+    
+            if(request.headers.authorization) {
+                token = request.headers.authorization;
+            }
+            if(token == '') {
+                response.json({ notallowed:true })
+                return;
+            }
+    
+            jwt.verify(token, process.env.SECRET, (err, decoded) => {
+                if(err) return response.status(401).json({error: 'Token invalid'})
+            });
+    
+            next();
+        } catch (error) {
+            return response.json({error})
+        }
+    }
+}
+````
+
+Vamos criar nosso post agora
+
+- Na pasta services crie o PostServices.ts
+
+````posts
+import { getCustomRepository, Repository } from "typeorm";
+import { Post } from "../models/Post";
+import { PostsRepository } from "../repositories/PostsRepository";
+
+export class PostServices {
+    private postsRepository: Repository<Post>;
+
+    constructor() {
+        this.postsRepository = getCustomRepository(PostsRepository)
+    }
+}
+````
+
+- a função de criação do post
+
+````post
+async setPost(user_id:number, title:string, text:string) {
+    try {
+        const post = this.postsRepository.create({
+            title,
+            text,
+            user_id
+        })
+
+        await this.postsRepository.save(post)
+
+        return post;
+        
+    } catch (error) {
+        return error
+    }
+}
+````
+
+- Na pasta controllers crie o PostController.ts e dentro dele a função de criação de posts
+
+````posts
+import { Request, Response } from "express";
+import jwt from 'jsonwebtoken'
+import { PostServices } from "../services/PostServices";
+
+export class PostController {
+    async create(request:Request, response:Response) {
+        const postServices = new PostServices();
+
+        const { title, text } = request.body;
+
+        const token = request.headers.authorization;
+
+        try {
+            const loggedUser = jwt.decode(token);
+
+            const post = await postServices.setPost(loggedUser['id'], title, text)
+
+            return response.status(201).json(post)
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+}
+````
+
+- crie a rota de criação de posts, repare que agora é usado o middleware de authorização nesta rota.
+
+````routes
+import { Router } from "express";
+import { AuthController } from "../controllers/AuthController";
+import { PostController } from "../controllers/PostController";
+import { UserController } from "../controllers/UserController";
+import { Authorize } from "../middlewares/Authorize";
+
+const userController = new UserController();
+const authController = new AuthController();
+const authorization = new Authorize();
+const postController = new PostController();
+
+const router = Router()
+
+//Autenticação
+router.post('/login', authController.login)
+
+//users
+router.post('/user', userController.create)
+
+//posts
+router.post('/post', authorization.authorized, postController.create)
+
+export { router }
+````
+
+Testando
+
+- No Insomnia, adicione o token gerado ao fazer login na aba Header, sem ele não será possível criar o post.
+
+![headers](/img/auth.png)
+
+![post](img/post.png)

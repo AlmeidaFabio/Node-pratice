@@ -24,7 +24,7 @@ export class createPosts1638229610178 implements MigrationInterface {
                     },
                     {
                         name:"text",
-                        type:"varchar"
+                        type:"text"
                     },
                     {
                         name:"created_at",

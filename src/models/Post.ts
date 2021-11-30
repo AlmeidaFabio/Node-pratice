@@ -1,10 +1,17 @@
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { User } from "./User";
 
 @Entity('posts')
 export class Post {
     @PrimaryGeneratedColumn("increment")
-    id:number;
+    post_id:number;
+
+    @Column()
+    user_id:number;
+
+    @ManyToOne(() => User, user => user.posts)
+    @JoinColumn({ name:"user_id" })
+    user:User;
 
     @Column()
     title:string;
@@ -17,7 +24,4 @@ export class Post {
 
     @CreateDateColumn({ default:Date.now() })
     updated_at:Date;
-
-    @ManyToOne(() => User, user => user.posts)
-    user:User;
 }
