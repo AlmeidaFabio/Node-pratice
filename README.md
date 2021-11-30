@@ -125,7 +125,7 @@ import './database';
 
 import { app } from "./app";
 
-app.listen(process.env.PORT || 633, () => {
+app.listen(process.env.PORT || 3000, () => {
     console.log(`Server is running in ${process.env.BASE_URL}:${process.env.PORT}`)
 });
 ```
@@ -250,3 +250,203 @@ import { User } from "../../models/User";
 @EntityRepository(User)
 export class UsersRepository extends Repository<User>{}
 ````
+
+## Relações
+
+Para exemplificar como trabalhar com relações no typeorm vamos criar uma nova tabela, posts por exemplo.
+
+- criando a migration
+``npx typeorm migration:create -n create_posts``
+
+- configurando a migration
+
+````posts
+import {MigrationInterface, QueryRunner, Table} from "typeorm";
+
+export class createPosts1638229610178 implements MigrationInterface {
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.createTable(
+            new Table({
+                name: "posts",
+                columns: [
+                    {
+                        name:"post_id",
+                        type:"int",
+                        isPrimary:true,
+                        isGenerated:true,
+                        generationStrategy:"increment"
+                    },
+                    {
+                        name:"user_id",
+                        type:"int"
+                    },
+                    {
+                        name:"title",
+                        type:"varchar"
+                    },
+                    {
+                        name:"text",
+                        type:"varchar"
+                    },
+                    {
+                        name:"created_at",
+                        type:"timestamp",
+                        default:"now()"
+                    },
+                    {
+                        name:"updated_at",
+                        type:"timestamp",
+                        default:"now()"
+                    }
+                ],
+                foreignKeys: [
+                   {
+                    name:"FKUserPosts",
+                    columnNames:["user_id"],
+                    referencedColumnNames:["id"],
+                    referencedTableName:"users",
+                    onDelete:"CASCADE",
+                    onUpdate:"CASCADE"
+                   }
+                ]
+            })
+        )
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.dropTable("posts")
+    }
+
+}
+````
+
+- Rode o comando `` npm run typeorm migration:run ``
+
+se tudo ocorreu bem a tabela posts foi criada no banco de dados
+
+- crie o model Post
+
+````post
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from "typeorm";
+
+@Entity('posts')
+export class Post {
+    @PrimaryGeneratedColumn("increment")
+    id:number;
+
+    @Column()
+    title:string;
+
+    @Column()
+    text:string;
+
+    @CreateDateColumn({ default:Date.now() })
+    created_at:Date;
+
+    @CreateDateColumn({ default:Date.now() })
+    updated_at:Date;
+}
+````
+
+- crie o repositório
+
+````postsrepository
+import { EntityRepository, Repository } from "typeorm";
+import { Post } from "../models/Post";
+
+@EntityRepository(Post)
+export class PostsRepository extends Repository<Post>{}
+````
+
+Bom, agora vamos supor que o usuário pode ter vários posts, mas cada post pertence apenas a um usuário.
+
+- no model Post adicione
+
+````manyToOne
+ @ManyToOne(() => User, user => user.posts)
+user: User;
+````
+
+````Post
+import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { User } from "./User";
+
+@Entity('posts')
+export class Post {
+    @PrimaryGeneratedColumn("increment")
+    id:number;
+
+    @Column()
+    title:string;
+
+    @Column()
+    text:string;
+
+    @CreateDateColumn({ default:Date.now() })
+    created_at:Date;
+
+    @CreateDateColumn({ default:Date.now() })
+    updated_at:Date;
+
+    @ManyToOne(() => User, user => user.posts)
+    user:User;
+}
+````
+
+- no model User adicione
+
+````òneTomany
+@OneToMany(() => Post, posts => posts.user)
+posts: Post[];
+````
+
+````User
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Post } from "./Post";
+
+@Entity('users')
+export class User {
+    @PrimaryGeneratedColumn("increment")
+    id:number;
+
+    @Column()
+    name:string;
+
+    @Column()
+    lastname:string;
+
+    @Column({ unique:true })
+    email:string;
+
+    @Column({select:false})
+    password:string;
+
+    @OneToMany(() => Post, posts => posts.user)
+    posts: Post[];
+}
+````
+
+Caso a relação seja de um pra um:
+
+- no model Post não seria necessário alterações
+- no model User teriámos:
+
+````User
+@OneToOne(() => Post)
+@JoinColumn()
+post: Post;
+````
+
+E se fosse uma relação de muitos para muitos?
+
+- No model Post não teriámos alterações
+- No User ficaria:
+
+````User
+@ManyToMany(() => Post)
+@JoinTable()
+posts: Post[];
+````
+
+Com isso já temos uma pequena noção de como trabalhar com relaçoes usando o typeorm.
