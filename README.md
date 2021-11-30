@@ -430,7 +430,7 @@ export class User {
 Caso a relação seja de um pra um:
 
 - no model Post não seria necessário alterações
-- no model User teriámos:
+- no model User teriamos:
 
 ````User
 @OneToOne(() => Post)
@@ -440,7 +440,7 @@ post: Post;
 
 E se fosse uma relação de muitos para muitos?
 
-- No model Post não teriámos alterações
+- No model Post não teriamos alterações
 - No User ficaria:
 
 ````User
@@ -450,3 +450,191 @@ posts: Post[];
 ````
 
 Com isso já temos uma pequena noção de como trabalhar com relaçoes usando o typeorm.
+
+## Tipagem
+
+Para dar continuidade é preciso criar nosso primeiro usuário, mas antes vamos criar nossos types do user e do post.
+
+- Dentro da pasta src crie uma pasta chamada types
+- Na pasta types crie o arquivo UserTypes.ts
+
+````userTypes
+export type UserTypes = {
+    name:string;
+    lastname:string;
+    email:string;
+    password:string;
+}
+````
+
+e o arquivo PostTypes.ts
+
+````postTypes
+export type PostTypes = {
+    title:string;
+    text:string;
+    created_at:string;
+    updated_at:string;
+}
+````
+
+## Services
+
+- Na pasta src crie a pasta services
+- Crie o arquivo UserServices.ts
+
+````user
+import { getCustomRepository, Repository } from "typeorm";
+import { User } from "../models/User";
+import { UsersRepository } from "../repositories/UsersRepository";
+
+export class UserServices {
+    private usersRepository: Repository<User>;
+
+    constructor() {
+        this.usersRepository = getCustomRepository(UsersRepository);
+    }
+}
+````
+
+- No arquivo UserServices vamos criar o serviço de criação de um usuário
+
+````userService
+import { getCustomRepository, Repository } from "typeorm";
+import { User } from "../models/User";
+import { UsersRepository } from "../repositories/UsersRepository";
+import { UserTypes } from "../types/UserTypes";
+
+export class UserServices {
+    private usersRepository: Repository<User>;
+
+    constructor() {
+        this.usersRepository = getCustomRepository(UsersRepository);
+    }
+    
+    async setUser(data:UserTypes) {
+        try {
+            const user = this.usersRepository.create({
+                name: data.name,
+                lastname: data.lastname,
+                email: data.email,
+                password: data.password
+            })
+
+            await this.usersRepository.save(user);
+
+            return user;
+            
+        } catch (error) {
+            return error
+        }
+    }
+}
+````
+
+## Controllers
+
+- Na pasta src crie a pasta controllers
+- Dentro de controllers crie o arquivo UserController
+
+### Bcrypt
+
+- Agora vamos a função de criar o usuário, mas antes vamos instalar o Bcrypt ``npm i bcrypt`` e sua tipagem ``npm i @types/bcrypt -D``.Bcrypt é um método de criptografia do tipo hash para senhas.
+- Agora sim, tudo pronto para criarmos nossa função
+
+````createUser
+import { Request, Response } from "express";
+import { UserServices } from "../services/UserServices";
+import bcrypt from 'bcrypt'
+
+export class UserController {
+    async create(request:Request, response:Response) {
+        const userService = new UserServices();
+
+        const { name, lastname, email, password } = request.body;
+
+        try {
+            const hash = await bcrypt.hash(password.toString(), 10);
+
+            const data = {
+                name,
+                lastname,
+                email,
+                password: hash
+            }
+
+            const user = await userService.setUser(data);
+
+            return response.status(201).json(user)
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+}
+````
+
+Quase tudo pronto
+
+## Rotas
+
+Precisamos criar nossas rotas
+
+- na pasta src crie a pasta routes
+- crie um index.ts na pasta routes
+
+````routes
+import { Router } from "express";
+
+const router = Router()
+
+export { router }
+````
+
+- import o router no app.ts
+
+````app
+import express from 'express'
+import { router } from './routes'
+
+const app = express()
+
+app.use(router)
+
+export { app }
+````
+
+- Ainda no app.ts import e use o json e o urlencoded do express, e, também, instale e use o pacote cors ``npm i cors`` ``npm i @types/cors -D``
+  
+````app
+import express, { json, urlencoded } from 'express'
+import cors from 'cors'
+import { router } from './routes'
+
+const app = express()
+app.use(cors())
+app.use(json())
+app.use(urlencoded({ extended:true }))
+
+app.use(router)
+
+export { app }
+````
+
+- No arquivo de rotas vamos criar nossa rota para criação de um usuário
+
+````route
+import { Router } from "express";
+import { UserController } from "../controllers/UserController";
+
+const userController = new UserController();
+
+const router = Router()
+
+router.post('/user', userController.create)
+
+export { router }
+````
+
+Agora é só testar usando o Insomnia, Postman, Rest test test, entre outros meios de testar sua api.
+
+![teste usando o insomnia](/img/test.png)
