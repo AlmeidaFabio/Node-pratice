@@ -328,12 +328,16 @@ se tudo ocorreu bem a tabela posts foi criada no banco de dados
 - crie o model Post
 
 ````post
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { User } from "./User";
 
 @Entity('posts')
 export class Post {
     @PrimaryGeneratedColumn("increment")
-    id:number;
+    post_id:number;
+
+    @Column({ select:false })
+    user_id:number;
 
     @Column()
     title:string;
@@ -346,9 +350,6 @@ export class Post {
 
     @CreateDateColumn({ default:Date.now() })
     updated_at:Date;
-
-    @Column()
-    user_id:number;
 }
 ````
 
@@ -367,18 +368,26 @@ Bom, agora vamos supor que o usuário pode ter vários posts, mas cada post pert
 - no model Post adicione
 
 ````manyToOne
- @ManyToOne(() => User, user => user.posts)
-user: User;
+@ManyToOne(() => User, user => user.posts)
+@JoinColumn({ name:"user_id" })
+user:User;
 ````
 
 ````Post
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { User } from "./User";
 
 @Entity('posts')
 export class Post {
     @PrimaryGeneratedColumn("increment")
-    id:number;
+    post_id:number;
+
+    @Column({ select:false })
+    user_id:number;
+
+    @ManyToOne(() => User, user => user.posts)
+    @JoinColumn({ name:"user_id" })
+    user:User;
 
     @Column()
     title:string;
@@ -391,12 +400,6 @@ export class Post {
 
     @CreateDateColumn({ default:Date.now() })
     updated_at:Date;
-
-    @Column()
-    user_id:number;
-
-    @ManyToOne(() => User, user => user.posts)
-    user:User;
 }
 ````
 
@@ -888,3 +891,145 @@ Testando
 ![headers](/img/auth.png)
 
 ![post](img/post.png)
+
+## Endpoints
+
+A seguir alguns exemplos de endpoints
+
+Services
+
+````service
+//listando todos os posts
+    async getPosts() {
+        try {
+            const posts = await this.postsRepository.find({
+                relations:["user"]
+            });
+
+            return posts;
+        } catch (error) {
+            return error
+        }
+    }
+
+//mostrando um post
+    async getPostById(post_id:string) {
+        try {
+            const post = await this.postsRepository.findOne(post_id, {
+                relations:["user"]
+            })
+
+            return post;
+        } catch (error) {
+            return error
+        }
+    }
+
+//editando um post
+    async editPost(post_id:string, title:string, text:string) {
+        try {
+            await this.postsRepository.update(post_id, {
+                title,
+                text
+            })
+
+            return;
+        } catch (error) {
+            return error
+        }
+    }
+
+//deletando um post
+    async deletePost(post_id:string) {
+        try {
+            await this.postsRepository.delete(post_id)
+
+            return;
+        } catch (error) {
+            return error
+        }
+    }
+````
+
+Controller
+
+````controller
+    async read(request:Request, response:Response) {
+        const postServices = new PostServices();
+        try {
+            const posts = await postServices.getPosts();
+
+            return response.status(200).json(posts)
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+
+    async show(request:Request, response:Response) {
+        const postServices = new PostServices();
+        const id = request.params.id;
+
+        try {
+            if(id) {
+                const post = await postServices.getPostById(id)
+
+                return response.status(200).json(post)
+            } else {
+                return response.status(400).json({error: 'Este Post não existe'})
+            }    
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+
+    async update(request:Request, response:Response) {
+        const postServices = new PostServices();
+        const { title, text } = request.body;
+        const post_id = request.params.id;
+        const token = request.headers.authorization;
+
+        try {
+            const loggedUser = jwt.decode(token);
+            const post = await postServices.getPostById(post_id);
+
+            if(post.user_id === loggedUser['id']) {
+                await postServices.editPost(post_id, title, text)
+
+                return response.status(400).json({success: 'Post editado'})
+            } else {
+                return response.status(400).json({error: 'Não autorizado'})
+            }
+
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+
+    async delete(request:Request, response:Response) {
+        const postServices = new PostServices();
+        const post_id = request.params.id;
+        const token = request.headers.authorization;
+
+        try {
+            const loggedUser = jwt.decode(token);
+            const post = await postServices.getPostById(post_id);
+
+            if(post.user_id === loggedUser['id']) {
+                await postServices.deletePost(post_id)
+
+                return response.status(400).json({success: 'Post deletado'})
+            }
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+````
+
+Routes
+
+````route
+router.get('/posts', postController.read)
+router.get('/post/:id', postController.show)
+router.put('/post/:id', authorization.authorized, postController.update)
+router.delete('/post/:id', authorization.authorized, postController.delete)
+````

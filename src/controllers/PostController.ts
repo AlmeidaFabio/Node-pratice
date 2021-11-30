@@ -20,4 +20,74 @@ export class PostController {
             return response.status(400).json(error)
         }
     }
+
+    async read(request:Request, response:Response) {
+        const postServices = new PostServices();
+        try {
+            const posts = await postServices.getPosts();
+
+            return response.status(200).json(posts)
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+
+    async show(request:Request, response:Response) {
+        const postServices = new PostServices();
+        const id = request.params.id;
+
+        try {
+            if(id) {
+                const post = await postServices.getPostById(id)
+
+                return response.status(200).json(post)
+            } else {
+                return response.status(400).json({error: 'Este Post não existe'})
+            }    
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+
+    async update(request:Request, response:Response) {
+        const postServices = new PostServices();
+        const { title, text } = request.body;
+        const post_id = request.params.id;
+        const token = request.headers.authorization;
+
+        try {
+            const loggedUser = jwt.decode(token);
+            const post = await postServices.getPostById(post_id);
+
+            if(post.user_id === loggedUser['id']) {
+                await postServices.editPost(post_id, title, text)
+
+                return response.status(400).json({success: 'Post editado'})
+            } else {
+                return response.status(400).json({error: 'Não autorizado'})
+            }
+
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
+
+    async delete(request:Request, response:Response) {
+        const postServices = new PostServices();
+        const post_id = request.params.id;
+        const token = request.headers.authorization;
+
+        try {
+            const loggedUser = jwt.decode(token);
+            const post = await postServices.getPostById(post_id);
+
+            if(post.user_id === loggedUser['id']) {
+                await postServices.deletePost(post_id)
+
+                return response.status(400).json({success: 'Post deletado'})
+            }
+        } catch (error) {
+            return response.status(400).json(error)
+        }
+    }
 }
