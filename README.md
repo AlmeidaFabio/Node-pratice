@@ -1018,6 +1018,8 @@ Controller
                 await postServices.deletePost(post_id)
 
                 return response.status(400).json({success: 'Post deletado'})
+            } else {
+                return response.status(400).json({error: 'Não autorizado'})
             }
         } catch (error) {
             return response.status(400).json(error)
@@ -1032,4 +1034,370 @@ router.get('/posts', postController.read)
 router.get('/post/:id', postController.show)
 router.put('/post/:id', authorization.authorized, postController.update)
 router.delete('/post/:id', authorization.authorized, postController.delete)
+````
+
+## Trabalhando com upload de arquivos
+
+Bom, agora seria interessante nosso usuário possuir uma foto de perfil e nossos posts fotos certo?
+
+Vamos começar configurando algumas coisas:
+
+- crie uma pasta chamada public na raiz do projeto
+- crie uma pasta chamada uploads dentro de public
+- dentro de uploads crie as pastas avatars e photos
+- dentro da pasta uploads crie um arquivo chamado ``.gitkeep``, não precisa colocar nada dentro dele, só criá-lo
+- no arquivo .gitignore adicione as linhas de código abaixo
+  
+````git
+public/uploads/*
+!public/uploads/.gitkeep
+````
+
+- Vamos criar a migration, o model e o repositório de avatars, para as photos o princípio é o mesmo.
+
+````migration
+import {MigrationInterface, QueryRunner, Table} from "typeorm";
+
+export class createAvatarsTable1638391795088 implements MigrationInterface {
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.createTable(
+            new Table({
+                name:"avatars",
+                columns: [
+                    {
+                        name:"avatar_id",
+                        type:"int",
+                        isPrimary:true,
+                        isGenerated:true,
+                        generationStrategy:"increment"
+                    },
+                    {
+                        name:"user_id",
+                        type:"int"
+                    },
+                    {
+                        name:"filename",
+                        type:"varchar"
+                    },
+                    {
+                        name:"originalname",
+                        type:"varchar"
+                    },
+                    {
+                        name:"url",
+                        type:"varchar"
+                    },
+                    {
+                        name:"created_at",
+                        type:"timestamp",
+                        default:"now()"
+                    }
+                ],
+                foreignKeys:[
+                    {
+                        name:"FKUserAvatar",
+                        columnNames:["user_id"],
+                        referencedColumnNames:["id"],
+                        referencedTableName:"users",
+                        onDelete:"CASCADE",
+                        onUpdate:"CASCADE"
+                    }
+                ]
+            })
+        )
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.dropTable("avatars");
+    }
+
+}
+````
+
+````model
+import { Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryColumn, PrimaryGeneratedColumn } from "typeorm";
+import { User } from "./User";
+
+@Entity("avatars")
+export class Avatar {
+    @PrimaryGeneratedColumn("increment")
+    avatar_id:number;
+
+    @Column({ select:false })
+    user_id:number;
+
+    @OneToOne(() => User, user => user.avatar)
+    @JoinColumn({ name:"user_id" })
+    user:User;
+
+    @Column({ select:false })
+    filename:string;
+
+    @Column({ select:false })
+    originalname:string;
+
+    @Column()
+    url:string;
+
+    @CreateDateColumn({ default:Date.now(), select:false })
+    created_at:Date;
+}
+````
+
+- no model User adicione
+
+````user
+@OneToOne(() => Avatar, avatar => avatar.user)
+avatar:Avatar;
+````
+
+````repository
+import { EntityRepository, Repository } from "typeorm";
+import { Avatar } from "../models/Avatar";
+
+@EntityRepository(Avatar)
+export class AvatarsRepository extends Repository<Avatar>{}
+````
+
+Agora que temos tudo pré configurado vamos ao que importa
+
+### Multer
+
+Em nosso projeto usaremos o multer ````npm install --save multer```` ````npm install @types/multer -D````
+
+- instale o crypto ````npm install --save crypto```` ele será importante para gerar o nome dos arquivos
+- na pasta middlewares crie o arquivo Upload.ts
+
+````upload
+import * as multer from 'multer';
+import path from 'path';
+import crypto from 'crypto';
+
+const uploadFolder = (fieldname:string) => {
+    return path.resolve(__dirname, '..', '..', 'public', 'uploads', `${fieldname}s`);
+}
+
+const storageTypes = {
+    local:multer.diskStorage({
+        destination: (req, file:Express.Multer.File, cb) => {
+            cb(null, uploadFolder(file.fieldname));
+        },
+        filename: (req, file:Express.Multer.File, cb) => {
+            crypto.randomBytes(16, (err, hash) => {
+                if(err) cb(null, err.message)
+
+                file.filename = `${hash.toString('hex')}${file.mimetype.replace('image/', '.')}`
+
+                cb(null, file.filename)
+            })
+        }
+    })
+}
+
+const uploadAvatar =  {
+    dest: path.resolve(__dirname, '..', '..', 'public', 'uploads', 'avatars'),
+    storage: storageTypes[process.env.STORAGE_TYPES],
+    limits: {
+        fileSize: 2 * 1024 * 1024
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+            "image/jpeg",
+            "image/jpg",
+            "image/png"
+        ]
+        if(allowedMimes.includes(file.mimetype)) {
+            cb(null, true)
+        } else {
+            cb(new Error("invalid file type."))
+        }
+    }
+}
+
+const uploadPhoto =  {
+    dest: path.resolve(__dirname, '..', '..', 'public', 'uploads', 'photos'),
+    storage: storageTypes[process.env.STORAGE_TYPES],
+    limits: {
+        fileSize: 2 * 1024 * 1024
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+            "image/jpeg",
+            "image/jpg",
+            "image/png"
+        ]
+        if(allowedMimes.includes(file.mimetype)) {
+            cb(null, true)
+        } else {
+            cb(new Error("invalid file type."))
+        }
+    }
+}
+
+export { uploadAvatar, uploadPhoto }
+````
+
+- vamos criar o ImageTypes na pasta types
+
+````type
+export type ImageTypes = {
+    originalname:string;
+    filename:string;
+    url:string;
+    user_id:number;
+}
+````
+
+- crie o UploadServices.ts na pasta services
+- crie a função de upload de avatar
+- crie também uma função para saber se o usuário ja possui um avatar e uma para deletar o avatar, pois estabelecemos uma relação de um para um, ou seja, se já tivermos um avatar deletaremos este antes de cadastrar-mos o novo.
+
+````avatar
+import { getCustomRepository, Repository } from "typeorm";
+import { Avatar } from "../models/Avatar";
+import { AvatarsRepository } from "../repositories/AvatarsRepository";
+import { ImageTypes } from "../types/ImageTypes";
+
+export class UploadServices {
+    private avatarsRepository: Repository<Avatar>;
+
+    constructor() {
+        this.avatarsRepository = getCustomRepository(AvatarsRepository)
+    }
+
+    async uploadAvatar(img:ImageTypes, userId:string) {
+        try {
+            const avatar = this.avatarsRepository.create({
+                originalname: img.originalname,
+                filename: img.filename,
+                url: img.url,
+                user_id:parseInt(userId)
+            }); 
+
+            await this.avatarsRepository.save(avatar);
+
+            return avatar;
+        } catch (error) {
+            return error;
+        }
+    }
+
+    async findAvatarByUserId(userId:string) {
+        try {
+            const avatar = this.avatarsRepository.find({
+                where:[{
+                    user_id: parseInt(userId)
+                }]
+            })
+
+            return avatar;
+
+        } catch (error) {
+            return error
+        }
+    }
+
+     async deleteAvatar(avatar_id: string) {
+        try {
+            await this.avatarsRepository.delete(avatar_id);
+            return;
+        } catch (error) {
+            return error
+        }
+    }
+}
+````
+
+- crie o UploadController
+
+````controller
+import { Request, Response } from "express";
+import { UploadServices } from "../services/UploadServices";
+import jwt from 'jsonwebtoken';
+
+export class UploadController {
+    async uploadFile(request:Request, response:Response) {
+        const uploadServices = new UploadServices();
+        const { originalname, filename, fieldname } = request.file;
+        const token = request.headers.authorization;
+
+        try {
+            const loggedUser = jwt.decode(token);
+
+            const img = {
+                originalname,
+                filename,
+                url: `${process.env.BASE_URL}:${process.env.PORT}/uploads/${fieldname}s/${filename}`,
+                user_id: parseInt(loggedUser['id'])
+            }
+
+            if(request.file.fieldname === 'avatar') {
+                const avatar = await uploadServices.findAvatarByUserId(loggedUser['id']);
+
+                if(avatar.length > 0) {
+                    const avatarId = avatar.map(item => item.avatar_id);
+
+                    await uploadServices.deleteAvatar(avatarId.toString());
+
+                    const newAvatar = await uploadServices.uploadAvatar(img);
+
+                    return response.status(201).json(newAvatar);
+
+                } else {
+                    const newAvatar = await uploadServices.uploadAvatar(img);
+
+                    return response.status(201).json(newAvatar);
+                }
+            }
+
+        } catch (error) {
+            return response.status(400).json(error);
+        }
+    }
+}
+````
+
+- vamos ao nosso arquivo de rotas
+
+````routes
+import { Router } from "express";
+import { AuthController } from "../controllers/AuthController";
+import { PostController } from "../controllers/PostController";
+import { UserController } from "../controllers/UserController";
+import { Authorize } from "../middlewares/Authorize";
+import { UploadController } from "../controllers/UploadController";
+import multer from 'multer'
+import { uploadAvatar } from '../middlewares/Upload'
+
+
+const userController = new UserController();
+const authController = new AuthController();
+const authorization = new Authorize();
+const postController = new PostController();
+const uploadController = new UploadController();
+
+const router = Router()
+
+//Autenticação
+router.post('/login', authController.login)
+
+//users
+router.post('/user', userController.create)
+router.post('/user/avatar', authorization.authorized, multer(uploadAvatar).single("avatar"), uploadController.uploadFile)
+
+//posts
+router.post('/post', authorization.authorized, postController.create)
+router.get('/posts', postController.read)
+router.get('/post/:id', postController.show)
+router.put('/post/:id', authorization.authorized, postController.update)
+router.delete('/post/:id', authorization.authorized, postController.delete)
+
+export { router }
+````
+
+note que na nossa nova rota além do middleware de autorização também temos o middleware do multer
+
+````route
+router.post('/user/avatar', authorization.authorized, multer(uploadAvatar).single("avatar"), uploadController.uploadFile)
 ````

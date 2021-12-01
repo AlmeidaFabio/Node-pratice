@@ -85,6 +85,8 @@ export class PostController {
                 await postServices.deletePost(post_id)
 
                 return response.status(400).json({success: 'Post deletado'})
+            } else {
+                return response.status(400).json({error: 'Não autorizado'})
             }
         } catch (error) {
             return response.status(400).json(error)

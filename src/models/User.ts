@@ -1,4 +1,5 @@
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, OneToMany, OneToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Avatar } from "./Avatar";
 import { Post } from "./Post";
 
 @Entity('users')
@@ -20,4 +21,7 @@ export class User {
 
     @OneToMany(() => Post, posts => posts.user)
     posts: Post[];
+
+    @OneToOne(() => Avatar, avatar => avatar.user)
+    avatar:Avatar;
 }
