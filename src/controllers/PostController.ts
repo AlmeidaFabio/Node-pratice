@@ -23,10 +23,17 @@ export class PostController {
 
     async read(request:Request, response:Response) {
         const postServices = new PostServices();
-        try {
-            const posts = await postServices.getPosts();
+        const { page = 1, limit = 6 } = request.query;
 
-            return response.status(200).json(posts)
+        try {
+            const data = await postServices.getPosts(page.toString(), limit.toString());
+
+            return response.status(200).json({
+                posts: data.posts,
+                pages: Math.ceil(data.count / parseInt(limit.toString())),
+                currentPage: parseInt(page.toString())
+            })
+
         } catch (error) {
             return response.status(400).json(error)
         }

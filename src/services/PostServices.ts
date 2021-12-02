@@ -26,13 +26,20 @@ export class PostServices {
         }
     }
 
-    async getPosts() {
+    async getPosts(page?:string, limit?:string) {
         try {
+            const total = await this.postsRepository.find();
             const posts = await this.postsRepository.find({
-                relations:["user"]
-            });
+                relations:["user",],
+                order: { created_at: "DESC" },
+                take: (parseInt(limit) * 1),
+                skip: (parseInt(page) - 1) * parseInt(limit)
+            })
 
-            return posts;
+            const count = total.length;
+
+            return {posts, count};
+
         } catch (error) {
             return error
         }

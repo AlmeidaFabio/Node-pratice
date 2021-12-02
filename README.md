@@ -1040,6 +1040,8 @@ router.delete('/post/:id', authorization.authorized, postController.delete)
 
 Bom, agora seria interessante nosso usuário possuir uma foto de perfil e nossos posts fotos certo?
 
+Em nosso exemplo salvaremos as imagens localmente
+
 Vamos começar configurando algumas coisas:
 
 - crie uma pasta chamada public na raiz do projeto
@@ -1053,7 +1055,8 @@ public/uploads/*
 !public/uploads/.gitkeep
 ````
 
-- Vamos criar a migration, o model e o repositório de avatars, para as photos o princípio é o mesmo.
+- no .env crie a variável ``STORAGE_TYPES=local``
+- Vamos criar a migration, o model e o repositório de avatars. Para o upload das fotos o princípio é o mesmo.
 
 ````migration
 import {MigrationInterface, QueryRunner, Table} from "typeorm";
@@ -1401,3 +1404,56 @@ note que na nossa nova rota além do middleware de autorização também temos o
 ````route
 router.post('/user/avatar', authorization.authorized, multer(uploadAvatar).single("avatar"), uploadController.uploadFile)
 ````
+
+## Paginação
+
+Em uma aplicação real teriamos dezenas, centenas, milhares... de posts, devido a isso é importante limitarmos nossas consultas ao banco de dados, vamos fazer isso agora.
+
+- Antes de tudo adicione mais posts
+- no PostServices faça as seguintes alterações no método getPosts
+
+````getPosts
+async getPosts(page?:string, limit?:string) {
+    try {
+        const total = await this.postsRepository.find();
+        const posts = await this.postsRepository.find({
+            relations:["user",],
+            order: { created_at: "DESC" },
+            take: (parseInt(limit) * 1),
+            skip: (parseInt(page) - 1) * parseInt(limit)
+        })
+
+        const count = total.length;
+
+        return {posts, count};
+
+    } catch (error) {
+        return error
+    }
+}
+````  
+
+- Agora alteramos o metodo read no PostController
+
+````postController
+async read(request:Request, response:Response) {
+    const postServices = new PostServices();
+    const { page=1, limit=6 } = request.query;
+
+    try {
+        const data = await postServices.getPosts(page.toString(), limit.toString());
+
+        return response.status(200).json({
+            posts: data.posts,
+            pages: Math.ceil(data.count / parseInt(limit.toString())),
+            currentPage: parseInt(page.toString())
+        })
+
+    } catch (error) {
+        return response.status(400).json(error)
+    }
+}
+````
+
+- Agora basta testar, por padrão teriamos 6 posts exibidos por página neste exemplo.
+- para alterar a página e/ou o limite você deve passa-los na url através das querys, por exemplo: ``http://localhost:3000/posts?page=2&limit=3``
